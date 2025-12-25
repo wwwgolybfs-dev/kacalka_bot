@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Фитнес-Трекер</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f0f0; }
+        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; max-width: 400px; margin: 20px auto; }
+        .day { text-align: center; padding: 10px; border: 1px solid #ccc; background: #fff; }
+        .completed { background: #4caf50; color: white; } /* Зеленый для выполненных */
+        .partial { background: #ffeb3b; } /* Желтый для частичных */
+        .missed { background: #f44336; color: white; } /* Красный для пропущенных */
+        #stats { text-align: center; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <h1>Календарь выполнения комбо</h1>
+    <div id="calendar" class="calendar"></div>
+    <div id="stats"></div>
+
+    <script>
+        const repo = 'YOUR_USERNAME/fitness-bot';  // Замени на свой
+        const jsonUrl = `https://raw.githubusercontent.com/${repo}/main/data.json`;
+
+        fetch(jsonUrl)
+            .then(response => response.json())
+            .then(data => {
+                const days = data.days;
+                const calendarDiv = document.getElementById('calendar');
+                const statsDiv = document.getElementById('stats');
+
+                // Генерация календаря (последние 30 дней для примера)
+                const today = new Date();
+                let totalCombos = 0;
+                let totalDays = 0;
+
+                for (let i = 29; i >= 0; i--) {  // 30 дней назад
+                    const date = new Date(today);
+                    date.setDate(today.getDate() - i);
+                    const isoDate = date.toISOString().split('T')[0];
+                    const dayDiv = document.createElement('div');
+                    dayDiv.classList.add('day');
+                    dayDiv.textContent = isoDate;
+
+                    if (days[isoDate]) {
+                        const combos = days[isoDate].combos;
+                        totalCombos += combos;
+                        totalDays++;
+                        if (combos === 2) dayDiv.classList.add('completed');
+                        else if (combos === 1) dayDiv.classList.add('partial');
+                        else dayDiv.classList.add('missed');
+                    } else {
+                        dayDiv.classList.add('missed');
+                    }
+
+                    calendarDiv.appendChild(dayDiv);
+                }
+
+                statsDiv.textContent = `Всего выполненных комбо: ${totalCombos} (из возможных ${totalDays * 2})`;
+            })
+            .catch(error => console.error('Ошибка загрузки данных:', error));
+    </script>
+</body>
+</html>
