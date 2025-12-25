@@ -2,63 +2,131 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Фитнес-Трекер</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Качалка Бот — Прогресс</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f0f0f0; }
-        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; max-width: 400px; margin: 20px auto; }
-        .day { text-align: center; padding: 10px; border: 1px solid #ccc; background: #fff; }
-        .completed { background: #4caf50; color: white; } /* Зеленый для выполненных */
-        .partial { background: #ffeb3b; } /* Желтый для частичных */
-        .missed { background: #f44336; color: white; } /* Красный для пропущенных */
-        #stats { text-align: center; font-size: 18px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; text-align: center; }
+        h1 { color: #4caf50; }
+        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; max-width: 700px; margin: 30px auto; }
+        .day { padding: 12px; border-radius: 8px; font-weight: bold; min-height: 50px; display: flex; flex-direction: column; justify-content: center; }
+        .header { background: #333; color: #aaa; font-size: 0.9em; }
+        .completed { background: #4caf50; color: white; }
+        .partial { background: #ffeb3b; color: black; }
+        .missed { background: #f44336; color: white; }
+        .future { background: #333; color: #666; opacity: 0.5; }
+        .day-number { font-size: 1.2em; }
+        .combos { font-size: 0.9em; margin-top: 4px; }
+        #stats { font-size: 1.4em; margin: 30px; }
+        .streak { font-size: 1.8em; color: #4caf50; margin: 20px 0; }
+        #last-update { font-size: 0.8em; color: #888; margin-top: 40px; }
     </style>
 </head>
 <body>
-    <h1>Календарь выполнения комбо</h1>
-    <div id="calendar" class="calendar"></div>
-    <div id="stats"></div>
+    <h1>🔥 Прогресс по китайскому комбо 🔥</h1>
+    <div id="stats">Загрузка данных...</div>
+    <div class="calendar" id="calendar"></div>
+    <div id="last-update"></div>
 
     <script>
-        const repo = 'YOUR_USERNAME/fitness-bot';  // Замени на свой
-        const jsonUrl = `https://raw.githubusercontent.com/${repo}/main/data.json`;
+        const jsonUrl = 'https://raw.githubusercontent.com/wwwgolybfs-dev/kacalka_bot/main/data.json';
 
-        fetch(jsonUrl)
-            .then(response => response.json())
-            .then(data => {
-                const days = data.days;
-                const calendarDiv = document.getElementById('calendar');
-                const statsDiv = document.getElementById('stats');
+        function loadData() {
+            // Обходим кэш — добавляем timestamp
+            fetch(jsonUrl + '?t=' + new Date().getTime())
+                .then(r => {
+                    if (!r.ok) throw new Error('Не удалось загрузить data.json');
+                    return r.json();
+                })
+                .then(data => {
+                    const days = data.days || {};
+                    const calendar = document.getElementById('calendar');
+                    const stats = document.getElementById('stats');
+                    const lastUpdate = document.getElementById('last-update');
+                    calendar.innerHTML = '';
 
-                // Генерация календаря (последние 30 дней для примера)
-                const today = new Date();
-                let totalCombos = 0;
-                let totalDays = 0;
+                    // Заголовки дней недели (начиная с Пн)
+                    ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(dayName => {
+                        const header = document.createElement('div');
+                        header.className = 'day header';
+                        header.textContent = dayName;
+                        calendar.appendChild(header);
+                    });
 
-                for (let i = 29; i >= 0; i--) {  // 30 дней назад
-                    const date = new Date(today);
-                    date.setDate(today.getDate() - i);
-                    const isoDate = date.toISOString().split('T')[0];
-                    const dayDiv = document.createElement('div');
-                    dayDiv.classList.add('day');
-                    dayDiv.textContent = isoDate;
+                    const today = new Date();
+                    const startDate = new Date(today);
+                    startDate.setDate(today.getDate() - 90); // ~3 месяца назад
 
-                    if (days[isoDate]) {
-                        const combos = days[isoDate].combos;
-                        totalCombos += combos;
-                        totalDays++;
-                        if (combos === 2) dayDiv.classList.add('completed');
-                        else if (combos === 1) dayDiv.classList.add('partial');
-                        else dayDiv.classList.add('missed');
-                    } else {
-                        dayDiv.classList.add('missed');
+                    // Находим первый понедельник до startDate
+                    const firstDay = new Date(startDate);
+                    const dayOfWeek = firstDay.getDay(); // 0 = Вс, 1 = Пн, ...
+                    const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Смещение до Пн
+                    firstDay.setDate(firstDay.getDate() - offset);
+
+                    let totalCombos = 0;
+                    let possibleCombos = 0;
+                    let currentStreak = 0;
+                    let maxStreak = 0;
+                    let tempStreak = 0;
+
+                    for (let d = new Date(firstDay); d <= today; d.setDate(d.getDate() + 1)) {
+                        const iso = d.toISOString().split('T')[0];
+                        const isToday = iso === today.toISOString().split('T')[0];
+                        const isFuture = d > today;
+
+                        const dayDiv = document.createElement('div');
+                        dayDiv.className = 'day';
+
+                        if (isFuture) {
+                            dayDiv.classList.add('future');
+                            dayDiv.innerHTML = `<div class="day-number">${d.getDate()}</div>`;
+                        } else {
+                            const combos = days[iso]?.combos || 0;
+                            totalCombos += combos;
+                            possibleCombos += 2;
+
+                            dayDiv.innerHTML = `
+                                <div class="day-number">${d.getDate()}</div>
+                                <div class="combos">${combos}/2</div>
+                            `;
+
+                            if (combos === 2) {
+                                dayDiv.classList.add('completed');
+                                tempStreak++;
+                                maxStreak = Math.max(maxStreak, tempStreak);
+                                if (isToday) currentStreak = tempStreak;
+                            } else if (combos === 1) {
+                                dayDiv.classList.add('partial');
+                                tempStreak = 0;
+                            } else {
+                                dayDiv.classList.add('missed');
+                                tempStreak = 0;
+                            }
+                        }
+
+                        calendar.appendChild(dayDiv);
                     }
 
-                    calendarDiv.appendChild(dayDiv);
-                }
+                    const percent = possibleCombos > 0 ? (totalCombos / possibleCombos * 100).toFixed(1) : 0;
 
-                statsDiv.textContent = `Всего выполненных комбо: ${totalCombos} (из возможных ${totalDays * 2})`;
-            })
-            .catch(error => console.error('Ошибка загрузки данных:', error));
+                    stats.innerHTML = `
+                        <div>Выполнено комбо: <strong>${totalCombos}</strong> из ${possibleCombos} (${percent}%)</div>
+                        <div class="streak">Текущий стрик: <strong>${currentStreak}</strong> дней 🔥</div>
+                        <div>Максимальный стрик: <strong>${maxStreak}</strong> дней 🏆</div>
+                    `;
+
+                    lastUpdate.textContent = `Последнее обновление: ${new Date().toLocaleString('ru-RU')}`;
+                })
+                .catch(err => {
+                    document.getElementById('stats').textContent = 'Ошибка загрузки данных: ' + err.message;
+                    document.getElementById('last-update').textContent = 'Проверь интернет или репозиторий';
+                });
+        }
+
+        // Первая загрузка
+        loadData();
+
+        // Автообновление каждые 5 минут
+        setInterval(loadData, 5 * 60 * 1000);
     </script>
 </body>
 </html>
