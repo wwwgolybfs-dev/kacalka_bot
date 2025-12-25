@@ -7,13 +7,16 @@
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; text-align: center; }
         h1 { color: #4caf50; }
-        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; max-width: 700px; margin: 30px auto; }
+        .controls { margin: 20px; }
+        button { padding: 10px 20px; margin: 0 10px; background: #333; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em; }
+        button:hover { background: #4caf50; }
+        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; max-width: 700px; margin: 20px auto; }
         .day { padding: 12px; border-radius: 8px; font-weight: bold; min-height: 50px; display: flex; flex-direction: column; justify-content: center; }
         .header { background: #333; color: #aaa; font-size: 0.9em; }
         .completed { background: #4caf50; color: white; }
         .partial { background: #ffeb3b; color: black; }
         .missed { background: #f44336; color: white; }
-        .future { background: #333; color: #666; opacity: 0.5; }
+        .empty { background: #222; opacity: 0.5; }
         .day-number { font-size: 1.2em; }
         .combos { font-size: 0.9em; margin-top: 4px; }
         #stats { font-size: 1.4em; margin: 30px; }
@@ -23,6 +26,13 @@
 </head>
 <body>
     <h1>🔥 Прогресс по китайскому комбо 🔥</h1>
+    
+    <div class="controls">
+        <button id="prev-month">&larr; Предыдущий месяц</button>
+        <span id="month-year" style="font-size: 1.4em; margin: 0 20px;"></span>
+        <button id="next-month">Следующий месяц &rarr;</button>
+    </div>
+    
     <div id="stats">Загрузка данных...</div>
     <div class="calendar" id="calendar"></div>
     <div id="last-update"></div>
@@ -30,8 +40,9 @@
     <script>
         const jsonUrl = 'https://raw.githubusercontent.com/wwwgolybfs-dev/kacalka_bot/main/data.json';
 
+        let currentDate = new Date(); // Текущий отображаемый месяц
+
         function loadData() {
-            // Обходим кэш — добавляем timestamp
             fetch(jsonUrl + '?t=' + new Date().getTime())
                 .then(r => {
                     if (!r.ok) throw new Error('Не удалось загрузить data.json');
@@ -39,88 +50,108 @@
                 })
                 .then(data => {
                     const days = data.days || {};
-                    const calendar = document.getElementById('calendar');
-                    const stats = document.getElementById('stats');
-                    const lastUpdate = document.getElementById('last-update');
-                    calendar.innerHTML = '';
-
-                    // Заголовки дней недели (начиная с Пн)
-                    ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(dayName => {
-                        const header = document.createElement('div');
-                        header.className = 'day header';
-                        header.textContent = dayName;
-                        calendar.appendChild(header);
-                    });
-
-                    const today = new Date();
-                    const startDate = new Date(today);
-                    startDate.setDate(today.getDate() - 90); // ~3 месяца назад
-
-                    // Находим первый понедельник до startDate
-                    const firstDay = new Date(startDate);
-                    const dayOfWeek = firstDay.getDay(); // 0 = Вс, 1 = Пн, ...
-                    const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Смещение до Пн
-                    firstDay.setDate(firstDay.getDate() - offset);
-
+                    const trackedDays = Object.keys(days).length;
                     let totalCombos = 0;
-                    let possibleCombos = 0;
                     let currentStreak = 0;
                     let maxStreak = 0;
                     let tempStreak = 0;
 
-                    for (let d = new Date(firstDay); d <= today; d.setDate(d.getDate() + 1)) {
-                        const iso = d.toISOString().split('T')[0];
-                        const isToday = iso === today.toISOString().split('T')[0];
-                        const isFuture = d > today;
-
-                        const dayDiv = document.createElement('div');
-                        dayDiv.className = 'day';
-
-                        if (isFuture) {
-                            dayDiv.classList.add('future');
-                            dayDiv.innerHTML = `<div class="day-number">${d.getDate()}</div>`;
+                    // Считаем общую статистику только по реальным дням
+                    const sortedDates = Object.keys(days).sort().reverse(); // от новых к старым
+                    for (const iso of sortedDates) {
+                        const combos = Math.min(days[iso].combos || 0, 2); // не больше 2 в день
+                        totalCombos += combos;
+                        if (combos === 2) {
+                            tempStreak++;
+                            maxStreak = Math.max(maxStreak, tempStreak);
                         } else {
-                            const combos = days[iso]?.combos || 0;
-                            totalCombos += combos;
-                            possibleCombos += 2;
-
-                            dayDiv.innerHTML = `
-                                <div class="day-number">${d.getDate()}</div>
-                                <div class="combos">${combos}/2</div>
-                            `;
-
-                            if (combos === 2) {
-                                dayDiv.classList.add('completed');
-                                tempStreak++;
-                                maxStreak = Math.max(maxStreak, tempStreak);
-                                if (isToday) currentStreak = tempStreak;
-                            } else if (combos === 1) {
-                                dayDiv.classList.add('partial');
-                                tempStreak = 0;
-                            } else {
-                                dayDiv.classList.add('missed');
-                                tempStreak = 0;
-                            }
+                            tempStreak = 0;
                         }
-
-                        calendar.appendChild(dayDiv);
+                    }
+                    // Текущий стрик — сколько последних дней подряд по 2 комбо
+                    for (const iso of sortedDates) {
+                        if (days[iso].combos >= 2) {
+                            currentStreak++;
+                        } else {
+                            break;
+                        }
                     }
 
-                    const percent = possibleCombos > 0 ? (totalCombos / possibleCombos * 100).toFixed(1) : 0;
+                    const possibleCombos = trackedDays * 2;
+                    const percent = trackedDays > 0 ? (totalCombos / possibleCombos * 100).toFixed(1) : 0;
 
-                    stats.innerHTML = `
+                    document.getElementById('stats').innerHTML = `
+                        <div>Отслеживается дней: <strong>${trackedDays}</strong></div>
                         <div>Выполнено комбо: <strong>${totalCombos}</strong> из ${possibleCombos} (${percent}%)</div>
                         <div class="streak">Текущий стрик: <strong>${currentStreak}</strong> дней 🔥</div>
                         <div>Максимальный стрик: <strong>${maxStreak}</strong> дней 🏆</div>
                     `;
 
-                    lastUpdate.textContent = `Последнее обновление: ${new Date().toLocaleString('ru-RU')}`;
+                    renderCalendar(days, currentDate);
+                    document.getElementById('month-year').textContent = currentDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+                    document.getElementById('last-update').textContent = `Обновлено: ${new Date().toLocaleString('ru-RU')}`;
                 })
                 .catch(err => {
-                    document.getElementById('stats').textContent = 'Ошибка загрузки данных: ' + err.message;
-                    document.getElementById('last-update').textContent = 'Проверь интернет или репозиторий';
+                    document.getElementById('stats').textContent = 'Ошибка: ' + err.message;
                 });
         }
+
+        function renderCalendar(days, date) {
+            const calendar = document.getElementById('calendar');
+            calendar.innerHTML = '';
+
+            // Заголовки
+            ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach(day => {
+                const h = document.createElement('div');
+                h.className = 'day header';
+                h.textContent = day;
+                calendar.appendChild(h);
+            });
+
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startOffset = (firstDay.getDay() + 6) % 7; // Пн = 0
+
+            // Пустые ячейки до начала месяца
+            for (let i = 0; i < startOffset; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'day empty';
+                calendar.appendChild(empty);
+            }
+
+            // Дни месяца
+            for (let d = 1; d <= lastDay.getDate(); d++) {
+                const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dayDiv = document.createElement('div');
+                dayDiv.className = 'day';
+                const combos = Math.min(days[iso]?.combos || 0, 2);
+
+                dayDiv.innerHTML = `
+                    <div class="day-number">${d}</div>
+                    <div class="combos">${combos}/2</div>
+                `;
+
+                if (combos === 2) dayDiv.classList.add('completed');
+                else if (combos === 1) dayDiv.classList.add('partial');
+                else if (days[iso]) dayDiv.classList.add('missed');
+                else dayDiv.classList.add('empty');
+
+                calendar.appendChild(dayDiv);
+            }
+        }
+
+        // Навигация
+        document.getElementById('prev-month').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            loadData();
+        });
+
+        document.getElementById('next-month').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            loadData();
+        });
 
         // Первая загрузка
         loadData();
